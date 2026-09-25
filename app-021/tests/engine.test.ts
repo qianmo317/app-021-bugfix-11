@@ -150,6 +150,39 @@ describe('公平性与交换（手工微调）', () => {
   })
 })
 
+describe('小组围坐（groups 模式：同组互为同桌）', () => {
+  it('必须分开的学生不被排进同一组', () => {
+    const cls = makeClass({ rows: 4, cols: 4, weeks: 10, mode: 'groups', aisles: [] })
+    cls.students[0].mustApartFrom = [cls.students[1].id]
+    cls.students[1].mustApartFrom = [cls.students[0].id]
+    const plan = generatePlan(cls)
+    for (const asg of plan) {
+      const violations = weekHardViolations(cls, asg.week, asg.map)
+      expect(violations.filter((v) => v.includes('必须分开'))).toHaveLength(0)
+    }
+  })
+
+  it('公平性报告：每人每周计入全部组内同桌', () => {
+    const cls = makeClass({ rows: 2, cols: 4, weeks: 4, mode: 'groups', aisles: [], seed: 8 })
+    cls.assignments = generatePlan(cls)
+    const report = computeFairness(cls)
+    // 2 个 4 人组：每人每周 3 个同桌 × 4 周 = 12 人次
+    expect(report.rows).toHaveLength(8)
+    for (const r of report.rows) {
+      expect(r.deskmates.reduce((s, d) => s + d.count, 0)).toBe(12)
+    }
+  })
+
+  it('同桌超 2 次的对会进入超限列表', () => {
+    const cls = makeClass({ rows: 2, cols: 2, weeks: 4, mode: 'groups', aisles: [] })
+    cls.assignments = generatePlan(cls)
+    const report = computeFairness(cls)
+    // 唯一一个 4 人组：6 对组合每周都同桌，全部超限
+    expect(report.deskmateOverLimit).toHaveLength(6)
+    for (const r of report.rows) expect(r.maxDeskmateRepeat).toBe(4)
+  })
+})
+
 describe('引擎：性能（§8 40人×20周 < 1s）', () => {
   it('40 人 20 周生成耗时 < 1000ms', () => {
     const cls = makeClass({ rows: 5, cols: 8, weeks: 20, seed: 42 })

@@ -99,7 +99,7 @@ export function buildSeatIndex(seats: Seat[], layout: LayoutConfig): SeatIndex {
       const g = s.tags.find((t) => t.startsWith('group:'))
       if (!g) return
       const all = idxByGroup.get(g) ?? []
-      deskmates[idxOf(s)] = all.filter((k) => k !== idxOf(s)).slice(0, 1)
+      deskmates[idxOf(s)] = all.filter((k) => k !== idxOf(s))
     })
   } else {
     for (const s of seats) {
