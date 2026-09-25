@@ -150,6 +150,67 @@ describe('公平性与交换（手工微调）', () => {
   })
 })
 
+describe('小组围坐模式：同组即同桌', () => {
+  it('同组全部成员都计入同桌统计', () => {
+    // 2×4 共 2 个小组，每组 4 人 → 每人每周 3 个同桌
+    const cls = makeClass({ rows: 2, cols: 4, mode: 'groups', aisles: [], weeks: 4, seed: 5 })
+    cls.assignments = generatePlan(cls)
+    const report = computeFairness(cls)
+    for (const row of report.rows) {
+      const total = row.deskmates.reduce((s, d) => s + d.count, 0)
+      expect(total).toBe(3 * 4) // 每周 3 个同组同桌 × 4 周
+    }
+  })
+
+  it('必须分开的学生不会被排进同一组', () => {
+    const cls = makeClass({ rows: 4, cols: 4, mode: 'groups', aisles: [], weeks: 8, seed: 8 })
+    cls.students[0].mustApartFrom = [cls.students[1].id]
+    cls.students[1].mustApartFrom = [cls.students[0].id]
+    const plan = generatePlan(cls)
+    for (const asg of plan) {
+      const violations = weekHardViolations(cls, asg.week, asg.map)
+      expect(violations.filter((v) => v.includes('必须分开'))).toHaveLength(0)
+    }
+  })
+
+  it('同组对角座位上的「必须分开」也会被检出', () => {
+    const cls = makeClass({ rows: 2, cols: 4, mode: 'groups', aisles: [], weeks: 1 })
+    const [a, b] = cls.students
+    a.mustApartFrom = [b.id]
+    b.mustApartFrom = [a.id]
+    // 手工把两人放进同一组 G1 的对角（r0c1 与 r1c0，不同排也不同列）
+    const map: Record<string, string> = { r0c1: a.id, r1c0: b.id }
+    const free = ['r0c0', 'r0c2', 'r0c3', 'r1c1', 'r1c2', 'r1c3']
+    cls.students.slice(2).forEach((s, i) => {
+      map[free[i]] = s.id
+    })
+    expect(weekHardViolations(cls, 1, map).join()).toContain('必须分开')
+  })
+
+  it('同桌超 2 次的对在小组模式下会被列出', () => {
+    const cls = makeClass({ rows: 2, cols: 4, mode: 'groups', aisles: [], weeks: 3 })
+    const [a, b, ...rest] = cls.students
+    // 连续 3 周把 a、b 编进同一组 G1（座位逐周变化，但始终同组）
+    const g1 = ['r0c0', 'r0c1', 'r1c0', 'r1c1']
+    const g2 = ['r0c2', 'r0c3', 'r1c2', 'r1c3']
+    const pairs = [
+      ['r0c0', 'r0c1'],
+      ['r1c0', 'r1c1'],
+      ['r0c1', 'r1c0'],
+    ]
+    cls.assignments = [1, 2, 3].map((week) => {
+      const map: Record<string, string> = { [pairs[week - 1][0]]: a.id, [pairs[week - 1][1]]: b.id }
+      const others = [...g1, ...g2].filter((id) => !(id in map))
+      rest.forEach((s, i) => {
+        map[others[i]] = s.id
+      })
+      return { week, map, score: { fairness: 0, repeats: 0 } }
+    })
+    const report = computeFairness(cls)
+    expect(report.deskmateOverLimit).toContainEqual({ a: a.name, b: b.name, count: 3 })
+  })
+})
+
 describe('引擎：性能（§8 40人×20周 < 1s）', () => {
   it('40 人 20 周生成耗时 < 1000ms', () => {
     const cls = makeClass({ rows: 5, cols: 8, weeks: 20, seed: 42 })
